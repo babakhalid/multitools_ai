@@ -19,6 +19,7 @@ import {
 import Exa from 'exa-js';
 import { z } from 'zod';
 import MemoryClient from 'mem0ai';
+import { Place } from '@/components/map-components';
 
 const scira = customProvider({
     languageModels: {
@@ -127,6 +128,42 @@ async function isValidImageUrl(url: string): Promise<boolean> {
     }
 }
 
+async function fetchCampusPlusEventData(eventId?: string) {
+    try {
+        const token = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vY2FtcHVzLWFwaS51bTZwLm1hL2FwaS9sb2dpbiIsImlhdCI6MTc0MTA4MjYyOCwiZXhwIjoxNzQzNjc0NjI4LCJuYmYiOjE3NDEwODI2MjgsImp0aSI6IkRpTHdDMFBZYUtzeEtkV3giLCJzdWIiOiIzODMwIiwicHJ2IjoiODdlMGFmMWVmOWZkMTU4MTJmZGVjOTcxNTNhMTRlMGIwNDc1NDZhYSJ9.1abx6iY6ESLGicvUONWuGmBeBgSaQ4M56UoRrFcOV4E';
+        const url = eventId 
+            ? `https://campus-api.um6p.ma/api/event/list?eventId=${eventId}`
+            : 'https://campus-api.um6p.ma/api/event/list';
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch event data: ${response.status}`);
+        }
+        
+        const eventData = await response.json();
+        // Sort events by start_date in descending order
+        eventData.data.sort((a: any, b: any) => 
+            new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+        );
+        return {
+            success: true,
+            data: eventData,
+        };
+    } catch (error) {
+        console.error('Error fetching Campus+ event data:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+        };
+    }
+}
 
 const extractDomain = (url: string): string => {
     const urlPattern = /^https?:\/\/([^/?#]+)(?:[/?#]|$)/i;
@@ -153,12 +190,58 @@ const deduplicateByDomainAndUrl = <T extends { url: string }>(items: T[]): T[] =
 
 // Modify the POST function to use the new handler
 export async function POST(req: Request) {
-    const { messages, model, group, user_id, timezone } = await req.json();
+    const { messages, model, group, user_id, timezone, campusPlusEventId } = await req.json();
     const { tools: activeTools, systemPrompt, toolInstructions, responseGuidelines } = await getGroupConfig(group);
 
     console.log("Running with model: ", model.trim());
     console.log("Group: ", group);
     console.log("Timezone: ", timezone);
+    console.log("Campus+ Event ID: ", campusPlusEventId);
+
+   // Fetch Campus+ event data if provided
+   let campusPlusData = null;
+   if (campusPlusEventId) {
+       const eventResult = await fetchCampusPlusEventData(campusPlusEventId);
+       if (eventResult.success) {
+           campusPlusData = eventResult.data;
+       }
+   }
+
+   // Transform Campus+ data into Place format
+   let transformedEvents: Place[] = [];
+   if (campusPlusData && campusPlusData.data) {
+       transformedEvents = campusPlusData.data.map((event: any) => ({
+           name: event.title,
+           location: { lat: 0, lng: 0 }, // Placeholder; update if API provides coordinates
+           place_id: event.id.toString(),
+           vicinity: event.location || 'Unknown location',
+           rating: undefined, // Not provided in example JSON
+           reviews_count: undefined, // Not provided
+           price_level: undefined, // Not provided
+           description: event.description,
+           photos: event.photo ? [{
+               thumbnail: `https://campus-api.um6p.ma/${event.photo}`,
+               small: `https://campus-api.um6p.ma/${event.photo}`,
+               medium: `https://campus-api.um6p.ma/${event.photo}`,
+               large: `https://campus-api.um6p.ma/${event.photo}`,
+               original: `https://campus-api.um6p.ma/${event.photo}`,
+           }] : [],
+           is_closed: false, // Assume open; update if status indicates otherwise
+           next_open_close: event.end_time || undefined,
+           type: event.category,
+           cuisine: undefined, // Not applicable
+           source: event.organizer,
+           phone: undefined, // Not provided
+           website: undefined, // Not provided
+           hours: [`${event.start_date} ${event.start_time} - ${event.end_date} ${event.end_time}`],
+           distance: undefined, // Not provided
+           bearing: undefined, // Not provided
+       }));
+   }
+
+   const updatedSystemPrompt = campusPlusData 
+       ? `${systemPrompt}\n\nAdditional Campus+ Event Context:\n${JSON.stringify(campusPlusData)}`
+       : systemPrompt;
 
     if (group !== 'chat' && group !== 'buddy' && model.trim() !== "scira-cmd-a") {
         console.log("Running inside part 1");
@@ -168,7 +251,7 @@ export async function POST(req: Request) {
                     model: scira.languageModel(model),
                     messages: convertToCoreMessages(messages),
                     temperature: 0,
-                    experimental_activeTools: [...activeTools],
+                    experimental_activeTools: [...activeTools, 'campus_plus_search'],
                     system: toolInstructions,
                     toolChoice: 'required',
                     tools: {
@@ -1331,6 +1414,76 @@ export async function POST(req: Request) {
                                 }
                             },
                         }),
+                        campus_plus_search: tool({
+                            description: 'Search Campus+ events by event ID or get all events.',
+                            parameters: z.object({
+                                eventId: z.string().optional().describe('The specific event ID to search for'),
+                            }),
+                            execute: async ({ eventId }: { eventId?: string }) => {
+                                const result = await fetchCampusPlusEventData(eventId);
+                                if (result.success) {
+                                    const events = result.data.data
+                                        .slice(0, 3) // Limit to 3 latest events
+                                        .map((event: any) => ({
+                                            name: event.title,
+                                            location: { lat: 0, lng: 0 },
+                                            place_id: event.id.toString(),
+                                            vicinity: event.location || 'Unknown location',
+                                            description: event.description,
+                                            photos: event.photo ? [{
+                                                thumbnail: `https://campus-api.um6p.ma/${event.photo}`,
+                                                small: `https://campus-api.um6p.ma/${event.photo}`,
+                                                medium: `https://campus-api.um6p.ma/${event.photo}`,
+                                                large: `https://campus-api.um6p.ma/${event.photo}`,
+                                                original: `https://campus-api.um6p.ma/${event.photo}`,
+                                            }] : [],
+                                            is_closed: false,
+                                            next_open_close: event.end_time || undefined,
+                                            type: event.category,
+                                            source: event.organizer,
+                                            hours: [`${event.start_date} ${event.start_time} - ${event.end_date} ${event.end_time}`],
+                                        }));
+
+                                    // Send a running annotation
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'research_update',
+                                        data: {
+                                            id: 'campus_plus_search',
+                                            type: 'campus_plus',
+                                            status: 'running',
+                                            title: 'Searching Campus+ Events',
+                                            message: 'Fetching latest campus events...',
+                                            timestamp: Date.now(),
+                                        }
+                                    });
+
+                                    // Send completed annotation with structured data
+                                    dataStream.writeMessageAnnotation({
+                                        type: 'research_update',
+                                        data: {
+                                            id: 'campus_plus_search',
+                                            type: 'campus_plus',
+                                            status: 'completed',
+                                            title: 'Latest Campus+ Events',
+                                            query: eventId ? `Event ID: ${eventId}` : 'All events',
+                                            results: events,
+                                            message: `Found ${events.length} latest events`,
+                                            timestamp: Date.now(),
+                                            overwrite: true,
+                                        }
+                                    });
+
+                                    return {
+                                        success: true,
+                                        events
+                                    };
+                                }
+                                return {
+                                    success: false,
+                                    error: result.error
+                                };
+                            },
+                        }),
                         datetime: tool({
                             description: 'Get the current date and time in the user\'s timezone',
                             parameters: z.object({}),
@@ -2158,6 +2311,13 @@ export async function POST(req: Request) {
                         console.log('reasoning details[2]: ', event.reasoningDetails);
                         console.log('Steps[2] ', event.steps);
                         console.log('Messages[2]: ', event.response.messages);
+
+                        if (campusPlusData) {
+                            dataStream.writeMessageAnnotation({
+                                type: 'campus_plus_data',
+                                data: campusPlusData.data // Send only the 'data' array
+                            });
+                        }
                     },
                     onError(event) {
                         console.log('Error: ', event.error);

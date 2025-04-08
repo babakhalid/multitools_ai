@@ -102,6 +102,13 @@ const nextConfig = {
                 port: '',
                 pathname: '/**'
             },
+            // sciracdn.com
+            {
+                protocol: 'https',
+                hostname: 'avatar.vercel.sh',
+                port: '',
+                pathname: '/**'
+            },
         ]
     },
 };

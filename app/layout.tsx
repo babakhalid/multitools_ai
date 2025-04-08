@@ -8,43 +8,50 @@ import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Providers } from './providers';
+import { cookies } from 'next/headers';
+import { AppSidebar } from '@/components/app-sidebar';
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import Script from 'next/script';
+
+export const experimental_ppr = true;
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://scira.ai"),
-  title: "Scira AI",
-  description: "Scira AI is a minimalistic AI-powered search engine that helps you find information on the internet.",
+  title: "AIDA - UM6P",
+  description: "AIDA - UM6P is a minimalistic AI-powered search engine that helps you find information on the internet.",
   openGraph: {
     url: "https://scira.ai",
-    siteName: "Scira AI",
+    siteName: "AIDA - UM6P",
   },
   keywords: [
-    "scira.ai",
-    "scira ai",
-    "Scira AI",
-    "scira AI",
-    "SCIRA.AI",
-    "scira github",
+    "aida.um6p",
+    "aida um6p",
+    "AIDA - UM6P",
+    "aida - um6p",
+    "AIDA.UM6P",
+    "aida github",
     "ai search engine",
-    "Scira",
-    "scira",
-    "scira.app",
-    "scira ai",
-    "scira ai app",
-    "scira",
+    "AIDA",
+    "aida",
+    "aida.app",
+    "aida ai",
+    "aida ai app",
+    "aida",
     "MiniPerplx",
-    "Scira AI",
+    "AIDA - UM6P",
     "open source ai search engine",
     "minimalistic ai search engine",
     "ai search engine",
-    "Scira (Formerly MiniPerplx)",
+    "AIDA (Formerly MiniPerplx)",
     "AI Search Engine",
     "mplx.run",
     "mplx ai",
     "zaid mukaddam",
-    "scira.how",
+    "aida.how",
     "search engine",
     "AI",
     "perplexity",
+    "um6p"
   ]
 };
 
@@ -63,22 +70,39 @@ export const viewport: Viewport = {
 const syne = Syne({ 
   subsets: ['latin'], 
   variable: '--font-syne',
-   preload: true,
+  preload: true,
   display: 'swap',
 });
 
-export default function RootLayout({
+// Define static user based on your schema
+const staticUser = {
+  id: "87571490-ca7f-4082-ac53-36e48e000247",
+  email: "Khalid.baba@um6.ma", // You can change this email
+  password: null // Optional field in your schema
+} as const;
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const isCollapsed = cookieStore.get('sidebar:state')?.value !== 'true';
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${GeistSans.variable} ${syne.variable} font-sans antialiased`}>
+        <Script
+          src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"
+          strategy="beforeInteractive"
+        />
         <NuqsAdapter>
           <Providers>
+            <SidebarProvider defaultOpen={!isCollapsed}>
+              <AppSidebar user={staticUser} />
+              <SidebarInset>{children}</SidebarInset>
+            </SidebarProvider>
             <Toaster position="top-center" richColors theme="system" />
-            {children}
           </Providers>
         </NuqsAdapter>
         <Analytics />

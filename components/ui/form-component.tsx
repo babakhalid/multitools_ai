@@ -60,8 +60,8 @@ const AnthropicIcon = ({ className }: { className?: string }) => (
 );
 
 const models = [
-    { value: "scira-default", label: "Grok 2.0", icon: XAIIcon, iconClass: "!text-neutral-300", description: "xAI's Grok 2.0 model", color: "glossyblack", vision: false, experimental: false, category: "Stable" },
-    { value: "scira-vision", label: "Grok 2.0 Vision", icon: XAIIcon, iconClass: "!text-neutral-300", description: "xAI's Grok 2.0 Vision model", color: "steel", vision: true, experimental: false, category: "Stable" },
+    { value: "scira-default", label: "Aida 2.0", icon: AnthropicIcon, iconClass: "!text-neutral-300", description: "xAI's Grok 2.0 model", color: "glossyblack", vision: false, experimental: false, category: "Stable" },
+    { value: "scira-vision", label: "Grok 2.0 Vision", icon: AnthropicIcon, iconClass: "!text-neutral-300", description: "xAI's Grok 2.0 Vision model", color: "steel", vision: true, experimental: false, category: "Stable" },
     // { value: "scira-cmd-a", label: "Command A", icon: "/cohere.svg", iconClass: "!text-neutral-900 dark:!text-white", description: "Cohere's Command A model", color: "purple", vision: false, experimental: true, category: "Experimental" },
 ];
 

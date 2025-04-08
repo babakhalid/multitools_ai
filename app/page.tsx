@@ -80,7 +80,9 @@ import {
     RefreshCw,
     WrapText,
     ArrowLeftRight,
-    Mountain
+    Mountain,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
 import Marked, { ReactRenderer } from 'marked-react';
 import { useTheme } from 'next-themes';
@@ -129,6 +131,9 @@ import ReasonSearch from '@/components/reason-search';
 import he from 'he';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import MemoryManager from '@/components/memory-manager';
+import PlaceCard, { Place } from '@/components/place-card';
+
+
 
 export const maxDuration = 120;
 
@@ -648,6 +653,78 @@ const MemoizedYouTubeCard = React.memo(YouTubeCard, (prevProps, nextProps) => {
     );
 });
 
+// Define the ChatHistoryItem interface
+interface ChatHistoryItem {
+    id: string;
+    content: string;
+    role: 'user' | 'assistant';
+    timestamp: Date;
+}
+
+const Sidebar: React.FC<{
+    chatHistory: ChatHistoryItem[];
+    onSelectChat: (index: number) => void;
+    isOpen: boolean;
+    toggleSidebar: () => void;
+}> = ({ chatHistory, onSelectChat, isOpen, toggleSidebar }) => {
+    return (
+        <motion.div
+            initial={{ x: -300 }}
+            animate={{ x: isOpen ? 0 : -300 }}
+            transition={{ duration: 0.3 }}
+            className={cn(
+                "fixed top-0 left-0 h-screen w-72 bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 z-50",
+                "flex flex-col"
+            )}
+        >
+            <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800">
+                <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Chat History</h2>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleSidebar}
+                    className="text-neutral-600 dark:text-neutral-400"
+                >
+                    <ChevronLeft className={cn("h-5 w-5 transition-transform", isOpen && "rotate-180")} />
+                </Button>
+            </div>
+            <ScrollArea className="flex-1">
+                <div className="p-2">
+                    {chatHistory.length === 0 ? (
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center p-4">
+                            No chat history yet
+                        </p>
+                    ) : (
+                        chatHistory.map((item, index) => (
+                            <div
+                                key={item.id}
+                                className={cn(
+                                    "p-3 mb-2 rounded-lg cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors",
+                                    "border border-neutral-200 dark:border-neutral-700"
+                                )}
+                                onClick={() => onSelectChat(index)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className={cn(
+                                        "w-2 h-2 rounded-full",
+                                        item.role === 'user' ? "bg-blue-500" : "bg-green-500"
+                                    )} />
+                                    <p className="text-sm text-neutral-900 dark:text-neutral-100 truncate">
+                                        {item.content}
+                                    </p>
+                                </div>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                                    {new Date(item.timestamp).toLocaleTimeString()}
+                                </p>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </ScrollArea>
+        </motion.div>
+    );
+};
+
 const HomeContent = () => {
     const [query] = useQueryState('query', parseAsString.withDefault(''))
     const [q] = useQueryState('q', parseAsString.withDefault(''))
@@ -673,6 +750,17 @@ const HomeContent = () => {
     const [hasManuallyScrolled, setHasManuallyScrolled] = useState(false);
     const isAutoScrollingRef = useRef(false);
 
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
+
+    interface ChatHistoryItem {
+        id: string;
+        content: string;
+        role: 'user' | 'assistant';
+        timestamp: Date;
+    }
+
+
     // Get stored user ID
     const userId = useMemo(() => getUserId(), []);
 
@@ -694,6 +782,23 @@ const HomeContent = () => {
                 ];
                 const { questions } = await suggestQuestions(newHistory);
                 setSuggestedQuestions(questions);
+    
+                // Update chat history
+                setChatHistory(prev => [
+                    ...prev,
+                    {
+                        id: `${Date.now()}-user`,
+                        content: lastSubmittedQueryRef.current,
+                        role: 'user',
+                        timestamp: new Date()
+                    },
+                    {
+                        id: `${Date.now()}-assistant`,
+                        content: message.content,
+                        role: 'assistant',
+                        timestamp: new Date()
+                    }
+                ]);
             }
         },
         onError: (error) => {
@@ -1283,42 +1388,20 @@ const HomeContent = () => {
 
     const Navbar: React.FC<NavbarProps> = () => {
         return (
-            <div className={cn(
-                "fixed top-0 left-0 right-0 z-[60] flex justify-between items-center p-4",
-                // Add opaque background only after submit
-                status === 'ready' ? "bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60" : "bg-background",
-            )}>
-                <div className="flex items-center gap-4">
-                    <Link href="/new">
-                        <Button
-                            type="button"
-                            variant={'secondary'}
-                            className="rounded-full bg-accent hover:bg-accent/80 backdrop-blur-sm group transition-all hover:scale-105 pointer-events-auto"
-                        >
-                            <Plus size={18} className="group-hover:rotate-90 transition-all" />
-                            <span className="text-sm ml-2 group-hover:block hidden animate-in fade-in duration-300">
-                                New
-                            </span>
-                        </Button>
-                    </Link>
-                </div>
-                <div className='flex items-center space-x-4'>
-                    <Link
-                        target="_blank"
-                        href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzaidmukaddam%2Fscira&env=XAI_API_KEY,ANTHROPIC_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY,E2B_API_KEY,ELEVENLABS_API_KEY,TAVILY_API_KEY,EXA_API_KEY,TMDB_API_KEY,YT_ENDPOINT,FIRECRAWL_API_KEY,OPENWEATHER_API_KEY,SANDBOX_TEMPLATE_ID,GOOGLE_MAPS_API_KEY,MAPBOX_ACCESS_TOKEN,TRIPADVISOR_API_KEY,AVIATION_STACK_API_KEY,CRON_SECRET,BLOB_READ_WRITE_TOKEN,NEXT_PUBLIC_MAPBOX_TOKEN,NEXT_PUBLIC_POSTHOG_KEY,NEXT_PUBLIC_POSTHOG_HOST,NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,MEM0_API_KEY,MEM0_ORG_NAME,MEM0_PROJECT_NAME&envDescription=API%20keys%20and%20configuration%20required%20for%20Scira%20to%20function"
-                        className="flex flex-row gap-2 items-center py-1.5 px-2 rounded-md 
-                            bg-accent hover:bg-accent/80
-                            backdrop-blur-sm text-foreground shadow-sm text-sm
-                            transition-all duration-200"
-                    >
-                        <VercelIcon size={14} />
-                        <span className='hidden sm:block'>Deploy with Vercel</span>
-                        <span className='sm:hidden block'>Deploy</span>
-                    </Link>
-                    <AboutButton />
-                    <ThemeToggle />
-                </div>
+            <div
+            className={cn(
+              "fixed top-0 left-0 right-0 z-[0] flex justify-between items-center p-4", // Changed z-index to be below sidebar (assuming sidebar is z-50)
+              status === 'ready' ? "bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60" : "bg-background",
+            )}
+          >
+            <div className="flex items-center gap-4">
+              
             </div>
+            <div className='flex items-center space-x-4'>
+              <AboutButton />
+              <ThemeToggle />
+            </div>
+          </div>
         );
     };
 
@@ -1723,12 +1806,21 @@ const HomeContent = () => {
     WidgetSection.displayName = 'WidgetSection';
 
     return (
-        <div className="flex flex-col !font-sans items-center min-h-screen bg-background text-foreground transition-all duration-500">
+        <div className="flex !font-sans min-h-screen bg-background text-foreground transition-all duration-500">
+        <Sidebar
+            chatHistory={chatHistory}
+            onSelectChat={(index) => {
+                // For now, just scroll to bottom - you might want to implement full chat restoration
+                if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth" });
+            }}
+            isOpen={isSidebarOpen}
+            toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        />
+        <div className="flex flex-col items-center flex-1" style={{ marginLeft: isSidebarOpen ? '288px' : '0', transition: 'margin-left 0.3s' }}>
             <Navbar />
-
             <div className={`w-full p-2 sm:p-4 ${status === 'ready' && messages.length === 0
-                ? 'min-h-screen flex flex-col items-center justify-center' // Center everything when no messages
-                : 'mt-20 sm:mt-16' // Add top margin when showing messages
+                ? 'min-h-screen flex flex-col items-center justify-center'
+                : 'mt-20 sm:mt-16'
                 }`}>
                 <div className={`w-full max-w-[90%] !font-sans sm:max-w-2xl space-y-6 p-0 mx-auto transition-all duration-300`}>
                     {status === 'ready' && messages.length === 0 && (
@@ -1988,6 +2080,7 @@ const HomeContent = () => {
                 </AnimatePresence>
             </div>
         </div>
+    </div>
     );
 }
 
@@ -2142,6 +2235,67 @@ const ToolInvocationListView = memo(
                     );
                 }
 
+                if (toolInvocation.toolName === 'campus_plus_search') {
+                    if (!result) {
+                        return (
+                            <SearchLoadingState
+                                icon={Calendar} // Use Calendar icon for events
+                                text="Searching Campus+ Events..."
+                                color="blue"
+                            />
+                        );
+                    }
+                
+                    const events = result.events;
+                    if (!events || events.length === 0) {
+                        return (
+                            <Card className="w-full my-4 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
+                                <CardContent className="flex items-center justify-center h-24">
+                                    <p className="text-neutral-500 dark:text-neutral-400">
+                                        No events found.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        );
+                    }
+                
+                    return (
+                        <Card className="w-full my-4 overflow-hidden bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center">
+                                        <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                    </div>
+                                    <div>
+                                        <CardTitle>Latest Campus+ Events</CardTitle>
+                                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                            Found {events.length} events
+                                        </p>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <div className="px-4 pb-2">
+                                <div className="flex overflow-x-auto gap-4 no-scrollbar">
+                                    {events.map((event: Place, index: number) => (
+                                        <motion.div
+                                            key={event.place_id}
+                                            className="w-[280px] flex-none"
+                                            initial={{ opacity: 0, x: 20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ duration: 0.3, delay: index * 0.1 }}
+                                        >
+                                            <PlaceCard
+                                                place={event}
+                                                onClick={() => console.log(`Clicked event: ${event.name}`)}
+                                                variant="list"
+                                            />
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </div>
+                        </Card>
+                    );
+                }
                 if (toolInvocation.toolName === 'movie_or_tv_search') {
                     if (!result) {
                         return <SearchLoadingState

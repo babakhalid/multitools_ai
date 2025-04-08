@@ -1,7 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
+"use client"; // Add if needed, depends on usage context
+
 import React, { useState } from 'react';
 import { DateTime } from 'luxon';
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"; // Ensure this path is correct
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -10,6 +12,7 @@ import {
     Clock
 } from 'lucide-react';
 
+// --- Interfaces ---
 interface Location {
     lat: number;
     lng: number;
@@ -24,7 +27,7 @@ interface Photo {
     caption?: string;
 }
 
-interface Place {
+export interface Place { // Export Place interface if used elsewhere
     name: string;
     location: Location;
     place_id: string;
@@ -54,7 +57,7 @@ interface PlaceCardProps {
     variant?: 'overlay' | 'list';
 }
 
-
+// --- HoursSection Component ---
 const HoursSection: React.FC<{ hours: string[]; timezone?: string }> = ({ hours, timezone }) => {
     const [isOpen, setIsOpen] = useState(false);
     const now = timezone ?
@@ -64,18 +67,17 @@ const HoursSection: React.FC<{ hours: string[]; timezone?: string }> = ({ hours,
 
     if (!hours?.length) return null;
 
-    // Find today's hours
     const todayHours = hours.find(h => h.startsWith(currentDay!))?.split(': ')[1] || 'Closed';
 
     return (
-        <div className="mt-4 border-t dark:border-neutral-800">
+        <div className="mt-4 border-t dark:border-neutral-800 pt-4"> {/* Added pt-4 */}
             <div
                 onClick={(e) => {
                     e.stopPropagation();
                     setIsOpen(!isOpen);
                 }}
                 className={cn(
-                    "mt-4 flex items-center gap-2 cursor-pointer transition-colors",
+                    "flex items-center gap-2 cursor-pointer transition-colors",
                     "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
                 )}
             >
@@ -86,6 +88,7 @@ const HoursSection: React.FC<{ hours: string[]; timezone?: string }> = ({ hours,
                 <Button
                     variant="ghost"
                     size="sm"
+                    aria-label={isOpen ? "Hide hours" : "Show hours"} // Accessibility
                     onClick={(e) => {
                         e.stopPropagation();
                         setIsOpen(!isOpen);
@@ -100,22 +103,23 @@ const HoursSection: React.FC<{ hours: string[]; timezone?: string }> = ({ hours,
                 </Button>
             </div>
 
+            {/* Collapsible Section */}
             <div className={cn(
-                "grid transition-all duration-200 overflow-hidden",
-                isOpen ? "grid-rows-[1fr] mt-2" : "grid-rows-[0fr]"
+                "grid transition-all duration-300 ease-in-out overflow-hidden",
+                isOpen ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0 mt-0" // Smooth transition
             )}>
-                <div className="overflow-hidden">
+                <div className="min-h-0"> {/* Needed for grid transition */}
                     <div className="rounded-md border dark:border-neutral-800 divide-y divide-neutral-100 dark:divide-neutral-800 bg-neutral-50 dark:bg-neutral-900">
                         {hours.map((timeSlot, idx) => {
-                            const [day, hours] = timeSlot.split(': ');
+                            const [day, hoursText] = timeSlot.split(': '); // Renamed variable
                             const isToday = day === currentDay;
 
                             return (
                                 <div
                                     key={idx}
                                     className={cn(
-                                        "flex items-center justify-between py-2 px-3 text-sm rounded-md",
-                                        isToday && "bg-white dark:bg-neutral-800"
+                                        "flex items-center justify-between py-2 px-3 text-sm", // Removed rounded-md from inner items
+                                        isToday ? "bg-white dark:bg-neutral-800" : "" // Apply bg only if today
                                     )}
                                 >
                                     <span className={cn(
@@ -125,9 +129,10 @@ const HoursSection: React.FC<{ hours: string[]; timezone?: string }> = ({ hours,
                                         {day}
                                     </span>
                                     <span className={cn(
+                                        "text-right", // Ensure right alignment
                                         isToday ? "font-medium" : "text-neutral-600 dark:text-neutral-400"
                                     )}>
-                                        {hours}
+                                        {hoursText}
                                     </span>
                                 </div>
                             );
@@ -140,40 +145,52 @@ const HoursSection: React.FC<{ hours: string[]; timezone?: string }> = ({ hours,
 };
 
 
+// --- PlaceCard Component ---
 const PlaceCard: React.FC<PlaceCardProps> = ({
     place,
     onClick,
     isSelected = false,
     variant = 'list'
 }) => {
-    const [showHours, setShowHours] = useState(false);
+    // Removed unused showHours state
+
     const isOverlay = variant === 'overlay';
 
     const formatTime = (timeStr: string | undefined, timezone: string | undefined): string => {
         if (!timeStr || !timezone) return '';
         const hours = Math.floor(parseInt(timeStr) / 100);
         const minutes = parseInt(timeStr) % 100;
-        return DateTime.now()
-            .setZone(timezone)
-            .set({ hour: hours, minute: minutes })
-            .toFormat('h:mm a');
+        try {
+            return DateTime.now()
+                .setZone(timezone)
+                .set({ hour: hours, minute: minutes })
+                .toFormat('h:mm a');
+        } catch (error) {
+            console.warn(`Error formatting time with timezone ${timezone}:`, error);
+            // Fallback to local time format if timezone is invalid
+             return DateTime.now()
+                .set({ hour: hours, minute: minutes })
+                .toFormat('h:mm a');
+        }
     };
 
     const getStatusDisplay = (): { text: string; color: string } | null => {
-        if (!place.timezone || place.is_closed === undefined || !place.next_open_close) {
+         if (place.is_closed === undefined || !place.next_open_close) {
             return null;
         }
 
         const timeStr = formatTime(place.next_open_close, place.timezone);
+        if (!timeStr) return null; // If time formatting failed
+
         if (place.is_closed) {
             return {
                 text: `Closed · Opens ${timeStr}`,
-                color: 'red-600 dark:text-red-400'
+                color: 'text-red-600 dark:text-red-400' // Direct class
             };
         }
         return {
             text: `Open · Closes ${timeStr}`,
-            color: 'green-600 dark:text-green-400'
+            color: 'text-green-600 dark:text-green-400' // Direct class
         };
     };
 
@@ -181,64 +198,67 @@ const PlaceCard: React.FC<PlaceCardProps> = ({
 
     const cardContent = (
         <>
-            <div className="flex gap-3">
+            <div className="flex gap-3 text-sm">
                 {/* Image with Price Badge */}
                 {place.photos?.[0]?.medium && (
-                    <div className="relative w-20 h-20 rounded-md overflow-hidden flex-shrink-0">
+                    <div className="relative w-20 h-20 rounded-md overflow-hidden flex-shrink-0 bg-neutral-100 dark:bg-neutral-800"> {/* Added bg */}
                         <img
                             src={place.photos[0].medium}
                             alt={place.name}
                             className="w-full h-full object-cover"
+                            loading="lazy" // Add lazy loading
                         />
                         {place.price_level && (
-                            <div className="absolute top-0 left-0 bg-black/80 text-white px-2 py-0.5 text-xs font-medium">
+                            <Badge
+                                variant="secondary"
+                                className="absolute top-1 left-1 bg-black/70 text-white border-none text-xs h-auto px-1.5 py-0.5 rounded" // Ensure rounded
+                            >
                                 {place.price_level}
-                            </div>
+                            </Badge>
                         )}
                     </div>
                 )}
 
                 <div className="flex-1 min-w-0">
+                     {/* Name, Rating, Status, Address */}
                     <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold truncate pr-6">
+                        <div className="flex-1 min-w-0 space-y-1"> {/* Added space-y-1 */}
+                            <h3 className="font-semibold truncate text-base text-neutral-900 dark:text-neutral-100">
                                 {place.name}
                             </h3>
 
-                            {/* Rating & Reviews */}
-                            {place.rating && (
-                                <div className="flex items-center gap-1 mt-1">
-                                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                    <span className="font-medium">{place.rating.toFixed(1)}</span>
-                                    {place.reviews_count && (
-                                        <span className="text-neutral-500">({place.reviews_count})</span>
+                            {place.rating !== undefined && place.rating !== null && (
+                                <div className="flex items-center gap-1">
+                                    <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 flex-shrink-0" />
+                                    <span className="font-medium text-neutral-800 dark:text-neutral-200">{place.rating.toFixed(1)}</span>
+                                    {place.reviews_count !== undefined && place.reviews_count !== null && (
+                                        <span className="text-neutral-500 dark:text-neutral-400">({place.reviews_count})</span>
                                     )}
                                 </div>
                             )}
 
-                            {/* Status */}
                             {statusDisplay && (
-                                <div className={`text-sm text-${statusDisplay.color} mt-1`}>
+                                <div className={cn("text-sm font-medium", statusDisplay.color)}>
                                     {statusDisplay.text}
                                 </div>
                             )}
 
-                            {/* Address */}
                             {place.vicinity && (
-                                <div className="flex items-center text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                                    <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
-                                    <span className="truncate">{place.vicinity}</span>
+                                <div className="flex items-start text-sm text-neutral-600 dark:text-neutral-400"> {/* Changed to items-start */}
+                                    <MapPin className="w-3.5 h-3.5 mr-1.5 mt-0.5 flex-shrink-0" /> {/* Adjusted margin/alignment */}
+                                    <span>{place.vicinity}</span> {/* Removed truncate, let flexbox handle wrap */}
                                 </div>
                             )}
                         </div>
+                         {/* Maybe an icon or something else on the right? Kept structure */}
                     </div>
 
-                    {/* Action Buttons */}
+                     {/* Action Buttons */}
                     <div className="flex flex-wrap gap-2 mt-3">
                         <Button
                             variant="default"
                             size="sm"
-                            className="h-8"
+                            className="h-8 px-3 text-xs sm:text-sm" // Responsive text size
                             onClick={(e) => {
                                 e.stopPropagation();
                                 window.open(
@@ -247,7 +267,7 @@ const PlaceCard: React.FC<PlaceCardProps> = ({
                                 );
                             }}
                         >
-                            <Navigation className="w-4 h-4 mr-2" />
+                            <Navigation className="w-3.5 h-3.5 mr-1.5" />
                             Directions
                         </Button>
 
@@ -255,13 +275,13 @@ const PlaceCard: React.FC<PlaceCardProps> = ({
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8"
+                                className="h-8 px-3 text-xs sm:text-sm"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     window.open(`tel:${place.phone}`, '_blank');
                                 }}
                             >
-                                <Phone className="w-4 h-4 mr-2" />
+                                <Phone className="w-3.5 h-3.5 mr-1.5" />
                                 Call
                             </Button>
                         )}
@@ -270,28 +290,29 @@ const PlaceCard: React.FC<PlaceCardProps> = ({
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8"
+                                className="h-8 px-3 text-xs sm:text-sm"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     window.open(place.website, '_blank');
                                 }}
                             >
-                                <Globe className="w-4 h-4 mr-2" />
+                                <Globe className="w-3.5 h-3.5 mr-1.5" />
                                 Website
                             </Button>
                         )}
 
-                        {place.place_id && !isOverlay && (
+                        {place.place_id && !isOverlay && place.source !== 'google' && ( // Show only if not Google source or use GMaps link
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8"
+                                className="h-8 px-3 text-xs sm:text-sm"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    window.open(`https://www.tripadvisor.com/${place.place_id}`, '_blank');
+                                    // Use Google Maps Place ID for more info link
+                                    window.open(`https://www.google.com/maps/place/?q=place_id:${place.place_id}`, '_blank');
                                 }}
                             >
-                                <ExternalLink className="w-4 h-4 mr-2" />
+                                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
                                 More Info
                             </Button>
                         )}
@@ -299,7 +320,7 @@ const PlaceCard: React.FC<PlaceCardProps> = ({
                 </div>
             </div>
 
-            {/* Hours Section - Only show if has hours */}
+            {/* Hours Section */}
             {place.hours && place.hours.length > 0 && (
                 <HoursSection hours={place.hours} timezone={place.timezone} />
             )}
@@ -309,7 +330,7 @@ const PlaceCard: React.FC<PlaceCardProps> = ({
     if (isOverlay) {
         return (
             <div
-                className="bg-white/95 dark:bg-black/95 backdrop-blur-sm p-4 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-800"
+                className="bg-white/95 dark:bg-black/95 backdrop-blur-sm p-4 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-800 max-w-sm w-full" // Ensure width
                 onClick={onClick}
             >
                 {cardContent}
@@ -322,9 +343,14 @@ const PlaceCard: React.FC<PlaceCardProps> = ({
             onClick={onClick}
             className={cn(
                 "w-full transition-all duration-200 cursor-pointer p-4",
-                "hover:bg-neutral-50 dark:hover:bg-neutral-800",
-                isSelected && "ring-2 ring-primary"
+                "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800", // Base styles
+                "hover:bg-neutral-50 dark:hover:bg-neutral-800", // Hover styles
+                isSelected
+                    ? "ring-2 ring-primary dark:ring-offset-black ring-offset-2 ring-offset-white" // Selected styles
+                    : "shadow-sm", // Default shadow
+                !isSelected && "hover:shadow-md" // Hover shadow when not selected
             )}
+            aria-selected={isSelected} // Accessibility
         >
             {cardContent}
         </Card>

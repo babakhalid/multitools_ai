@@ -7,10 +7,71 @@ import { xai } from '@ai-sdk/xai';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 
-export async function suggestQuestions(history: any[]) {
+async function fetchCampusPlusEventData(eventId?: string) {
+  try {
+    const token = 'user_token';
+    const url = eventId 
+      ? `https://campus-api.um6p.ma/api/event/list?eventId=${eventId}`
+      : 'https://campus-api.um6p.ma/api/event/list';
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch event data: ${response.status}`);
+    }
+    
+    const eventData = await response.json();
+    return {
+      success: true,
+      data: eventData,
+    };
+  } catch (error) {
+    console.error('Error fetching Campus+ event data:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function suggestQuestions(
+  history: any[], 
+  campusPlusEventId?: string
+) {
   'use server';
 
   console.log(history);
+
+  // Fetch Campus+ event data if provided
+  let campusPlusData = null;
+  if (campusPlusEventId) {
+    const eventResult = await fetchCampusPlusEventData(campusPlusEventId);
+    if (eventResult.success) {
+      campusPlusData = eventResult.data;
+    }
+  }
+
+  const systemPrompt = `
+    You are a search engine query/questions generator. You 'have' to create only '3' questions for the search engine based on the message history which has been provided to you.
+    The questions should be open-ended and should encourage further discussion while maintaining the whole context. Limit it to 5-10 words per question.
+    Always put the user input's context in some way so that the next search knows what to search for exactly.
+    Try to stick to the context of the conversation and avoid asking questions that are too general or too specific.
+    For weather based conversations sent to you, always generate questions that are about news, sports, or other topics that are not related to the weather.
+    For programming based conversations, always generate questions that are about the algorithms, data structures, or other topics that are related to it or an improvement of the question.
+    For location based conversations, always generate questions that are about the culture, history, or other topics that are related to the location.
+    Do not use pronouns like he, she, him, his, her, etc. in the questions as they blur the context. Always use the proper nouns from the context.
+    ${campusPlusData ? `
+    Additional context from Campus+ event:
+    Event Data: ${JSON.stringify(campusPlusData)}
+    Incorporate this event information into the questions where relevant.
+    ` : ''}
+  `;
 
   const { object } = await generateObject({
     model: xai("grok-beta"),
@@ -18,18 +79,10 @@ export async function suggestQuestions(history: any[]) {
     maxTokens: 300,
     topP: 0.3,
     topK: 7,
-    system:
-      `You are a search engine query/questions generator. You 'have' to create only '3' questions for the search engine based on the message history which has been provided to you.
-The questions should be open-ended and should encourage further discussion while maintaining the whole context. Limit it to 5-10 words per question.
-Always put the user input's context is some way so that the next search knows what to search for exactly.
-Try to stick to the context of the conversation and avoid asking questions that are too general or too specific.
-For weather based conversations sent to you, always generate questions that are about news, sports, or other topics that are not related to the weather.
-For programming based conversations, always generate questions that are about the algorithms, data structures, or other topics that are related to it or an improvement of the question.
-For location based conversations, always generate questions that are about the culture, history, or other topics that are related to the location.
-Do not use pronouns like he, she, him, his, her, etc. in the questions as they blur the context. Always use the proper nouns from the context.`,
+    system: systemPrompt,
     messages: history,
     schema: z.object({
-      questions: z.array(z.string()).describe('The generated questions based on the message history.')
+      questions: z.array(z.string()).describe('The generated questions based on the message history and optional event data.')
     }),
   });
 
@@ -41,10 +94,9 @@ Do not use pronouns like he, she, him, his, her, etc. in the questions as they b
 const ELEVENLABS_API_KEY = serverEnv.ELEVENLABS_API_KEY;
 
 export async function generateSpeech(text: string) {
-
-  const VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb' // This is the ID for the "George" voice. Replace with your preferred voice ID.
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`
-  const method = 'POST'
+  const VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb';
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
+  const method = 'POST';
 
   if (!ELEVENLABS_API_KEY) {
     throw new Error('ELEVENLABS_API_KEY is not defined');
@@ -54,7 +106,7 @@ export async function generateSpeech(text: string) {
     Accept: 'audio/mpeg',
     'xi-api-key': ELEVENLABS_API_KEY,
     'Content-Type': 'application/json',
-  }
+  };
 
   const data = {
     text,
@@ -63,20 +115,18 @@ export async function generateSpeech(text: string) {
       stability: 0.5,
       similarity_boost: 0.5,
     },
-  }
+  };
 
-  const body = JSON.stringify(data)
+  const body = JSON.stringify(data);
 
   const input = {
     method,
     headers,
     body,
-  }
+  };
 
-  const response = await fetch(url, input)
-
+  const response = await fetch(url, input);
   const arrayBuffer = await response.arrayBuffer();
-
   const base64Audio = Buffer.from(arrayBuffer).toString('base64');
 
   return {
@@ -86,7 +136,7 @@ export async function generateSpeech(text: string) {
 
 export async function fetchMetadata(url: string) {
   try {
-    const response = await fetch(url, { next: { revalidate: 3600 } }); // Cache for 1 hour
+    const response = await fetch(url, { next: { revalidate: 3600 } });
     const html = await response.text();
 
     const titleMatch = html.match(/<title>(.*?)<\/title>/i);
@@ -101,6 +151,27 @@ export async function fetchMetadata(url: string) {
   } catch (error) {
     console.error('Error fetching metadata:', error);
     return null;
+  }
+}
+
+// Add the missing deleteTrailingMessages function
+export async function deleteTrailingMessages({ id }: { id: string }) {
+  'use server';
+  try {
+    console.log(`Deleting trailing messages after message ID: ${id}`);
+    // Placeholder logic: Replace with your actual implementation
+    // For example, if using a database:
+    // await db.messages.deleteMany({ where: { id: { gt: id } } });
+    // Or if using an API:
+    // await fetch(`/api/messages/delete-trailing?id=${id}`, { method: 'DELETE' });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting trailing messages:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
@@ -122,7 +193,6 @@ const groupTools = {
   extreme: ['reason_search'] as const,
 } as const;
 
-// Separate tool instructions and response guidelines for each group
 const groupToolInstructions = {
   web: `
   Today's Date: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit", weekday: "short" })}
@@ -142,13 +212,13 @@ const groupToolInstructions = {
 
   #### Weather Data:
   - Run the tool with the location and date parameters directly no need to plan in the thinking canvas.
-  - When you get the weather data, talk about the weather conditions and what to wear or do in that weather.
+  - When you get the weather data, talk about the weather conditions and what to wear or do in that погоде.
   - Answer in paragraphs and no need of citations for this tool.
 
   ### datetime tool:
   - When you get the datetime data, talk about the date and time in the user's timezone.
   - Do not always talk about the date and time, only talk about it when the user asks for it.
-  - No need to put a
+  - No need to put a citation for this tool.
 
   #### Nearby Search:
   - Use location and radius parameters. Adding the country name improves accuracy.
@@ -329,7 +399,7 @@ const groupResponseGuidelines = {
   4. Do not talk about the memory results in the response, if you do retrive something, just talk about it in a natural language.
 
   ### Response Format:
-  - Use markdown for formatting
+  --use markdown for formatting
   - Keep responses concise but informative
   - Include relevant memory details when appropriate
   
